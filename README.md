@@ -1,4 +1,4 @@
-# 🌍 Disaster Monitoring & Early Warning System
+# Disaster Monitoring & Early Warning System
 
 [![AWS](https://img.shields.io/badge/AWS-Cloud-orange)](https://aws.amazon.com/)
 [![Python](https://img.shields.io/badge/Python-3.9-blue)](https://python.org/)
