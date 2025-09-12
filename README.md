@@ -29,8 +29,8 @@ EventBridge (Schedule) → DataGenerator Lambda → DisasterPredictor Lambda →
 
 ### Deploy
 ```bash
-git clone <your-repo>
-cd disaster-monitoring-aws
+git clone https://github.com/shoaibalimir/iot-meets-cloud-and-ai.git
+cd iot-meets-cloud-and-ai
 chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```
