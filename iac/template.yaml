@@ -1,0 +1,128 @@
+# iac/template.yaml
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Disaster Monitoring & Early Warning System (Simulated)
+
+Parameters:
+  S3Bucket:
+    Type: String
+    Default: your-lambda-bucket
+    Description: S3 bucket containing Lambda code
+
+Resources:
+  # SNS Topic for disaster alerts
+  DisasterAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: DisasterAlerts
+      DisplayName: Disaster Monitoring Alerts
+
+  # IAM Role for Lambda functions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SNSPublishPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref DisasterAlertsTopic
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: "*"
+
+  # Data Generator Lambda
+  DataGeneratorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DisasterDataGenerator
+      Runtime: python3.9
+      Handler: data_generator.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          PREDICTOR_FUNCTION: !Ref PredictorFunction
+      Code:
+        ZipFile: |
+          import json
+          print("Placeholder - will be replaced during deployment")
+
+  # Predictor Lambda (ML Simulation)
+  PredictorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DisasterPredictor
+      Runtime: python3.9
+      Handler: predictor.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref DisasterAlertsTopic
+      Code:
+        ZipFile: |
+          import json
+          print("Placeholder - will be replaced during deployment")
+
+  # Alert Sender Lambda
+  AlertSenderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DisasterAlertSender
+      Runtime: python3.9
+      Handler: alert_sender.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref DisasterAlertsTopic
+      Code:
+        ZipFile: |
+          import json
+          print("Placeholder - will be replaced during deployment")
+
+  # EventBridge Rule to trigger data generation every 2 minutes
+  DataGenerationSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: DisasterDataGeneration
+      Description: Triggers mock IoT data generation
+      ScheduleExpression: rate(2 minutes)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt DataGeneratorFunction.Arn
+          Id: DataGeneratorTarget
+
+  # Permission for EventBridge to invoke Lambda
+  EventBridgeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DataGeneratorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DataGenerationSchedule.Arn
+
+Outputs:
+  SNSTopicArn:
+    Description: ARN of the disaster alerts SNS topic
+    Value: !Ref DisasterAlertsTopic
+    Export:
+      Name: DisasterAlerts-TopicArn
+  
+  DataGeneratorFunctionName:
+    Description: Name of the data generator function
+    Value: !Ref DataGeneratorFunction
+  
+  PredictorFunctionName:
+    Description: Name of the predictor function
+    Value: !Ref PredictorFunction

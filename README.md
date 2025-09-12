@@ -1,269 +1,209 @@
-# Smart Environmental Monitoring System
+# 🌍 Disaster Monitoring & Early Warning System
 
 [![AWS](https://img.shields.io/badge/AWS-Cloud-orange)](https://aws.amazon.com/)
 [![Python](https://img.shields.io/badge/Python-3.9-blue)](https://python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-A comprehensive IoT-based environmental monitoring solution that demonstrates the integration of simulated IoT sensors, cloud computing, and AI/ML technologies using AWS services.
+## Overview
+A **simulated IoT-based Disaster Monitoring System** built on AWS for presentation/demo purposes. Since real IoT devices and ML models (SageMaker) are costly, this system uses:
 
-## Architecture Overview
+- **EventBridge + Lambda** → Generate mock IoT sensor data
+- **Lambda (Rule-based ML simulation)** → Predict disasters using simple thresholds  
+- **SNS** → Send early warning alerts to subscribers
 
-This project simulates environmental sensors and processes their data through a serverless architecture on AWS, implementing real-time analytics and anomaly detection.
+## Architecture
+```
+EventBridge (Schedule) → DataGenerator Lambda → DisasterPredictor Lambda → SNS Alerts
+                             ↓
+                        Mock IoT Data:
+                        • Water levels (flood detection)
+                        • Vibration (earthquake detection) 
+                        • Weather data (storm detection)
+```
 
-### System Components
-- **Data Generation**: Simulated IoT sensors using EventBridge and Lambda
-- **Data Processing**: Real-time stream processing with Lambda functions
-- **Storage**: DynamoDB for real-time data, S3 for historical storage
-- **Analytics**: Custom anomaly detection using statistical models
-- **API**: RESTful endpoints via API Gateway
-- **Visualization**: Real-time dashboard with interactive charts
-
-## Quick Start
+## Quick Deploy
 
 ### Prerequisites
-- AWS CLI configured with appropriate permissions
-- Python 3.9+
-- Git
+- AWS CLI configured
+- Appropriate AWS permissions
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/shoaibalimir/iot-meets-cloud-and-ai.git
-   cd iot-meets-cloud-and-ai
-   ```
-
-2. **Deploy the infrastructure**
-   ```bash
-   chmod +x scripts/setup-environment.sh
-   ./scripts/setup-environment.sh
-   ```
-
-3. **Deploy CloudFormation stack**
-   ```bash
-   aws cloudformation create-stack \
-     --stack-name iot-monitoring-system \
-     --template-body file://infrastructure/cloudformation/main-stack.yaml \
-     --capabilities CAPABILITY_NAMED_IAM \
-     --parameters ParameterKey=Environment,ParameterValue=dev
-   ```
-
-4. **Access the dashboard**
-   - Get the CloudFront URL from stack outputs
-   - Open the dashboard to view real-time sensor data
-
-## Features
-
-### IoT Data Simulation
-- **Temperature Sensor**: Simulates room temperature (18°C - 35°C)
-- **Humidity Sensor**: Relative humidity percentage (30% - 80%)
-- **Air Quality Sensor**: CO, NO2, PM2.5 levels
-- **Light Sensor**: Ambient light levels (0-1023 lux)
-- **Motion Sensor**: Binary occupancy detection
-
-### Real-time Processing
-- Data validation and enrichment
-- Statistical anomaly detection
-- Trend analysis and forecasting
-- Automated alerting via SNS
-
-### AI/ML Capabilities
-- **Anomaly Detection**: Statistical model identifying unusual patterns
-- **Predictive Analytics**: Forecasting environmental conditions
-- **Pattern Recognition**: Identifying daily/weekly usage patterns
-- **Alert Classification**: Smart categorization of anomalies
-
-### API Endpoints
-```
-GET  /sensors              - List all sensors
-GET  /sensors/{id}/data    - Get sensor readings
-GET  /analytics/anomalies  - Get detected anomalies
-GET  /dashboard/metrics    - Get dashboard data
-POST /alerts/subscribe     - Subscribe to alerts
-```
-
-## Architecture Details
-
-### High-Level Architecture
-```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│ EventBridge │<---│    Lambda    │--->│ DynamoDB    │
-│   Rules     │    │ Data Gen.    │    │ (Real-time) │
-└─────────────┘    └──────────────┘    └─────────────┘
-                            |
-                            V
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│   SNS       │<---│    Lambda    │--->│     S3      │
-│ Alerts      │    │ Processor    │    │ (Archive)   │
-└─────────────┘    └──────────────┘    └─────────────┘
-                            |
-                            V
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│   Web       │<---│ API Gateway  │--->│ CloudWatch  │
-│ Dashboard   │    │              │    │ Metrics     │
-└─────────────┘    └──────────────┘    └─────────────┘
-```
-
-### Data Flow
-1. **EventBridge** triggers data generation every minute
-2. **Lambda Data Generator** creates realistic sensor readings
-3. **Lambda Processor** validates, enriches, and stores data
-4. **Anomaly Detection** runs statistical analysis
-5. **API Gateway** exposes data via RESTful endpoints
-6. **Dashboard** displays real-time visualizations
-
-## Project Structure
-
-```
-├── src/lambda/              # Lambda function code
-│   ├── data-generator/      # IoT data simulation
-│   ├── data-processor/      # Data processing logic
-│   ├── api-handler/         # API Gateway handlers
-│   └── ml-predictor/        # ML inference functions
-├── infrastructure/          # CloudFormation templates
-├── docs/                    # Architecture documentation
-├── tests/                   # Unit and integration tests
-└── scripts/                 # Deployment and utility scripts
-```
-
-## Configuration
-
-### Environment Variables
+### Deploy
 ```bash
-# AWS Configuration
-AWS_REGION=us-east-1
-ENVIRONMENT=dev
-
-# Application Settings
-SENSOR_COUNT=5
-DATA_GENERATION_INTERVAL=60
-ANOMALY_THRESHOLD=2.5
-ALERT_EMAIL=your-email@example.com
+git clone <your-repo>
+cd disaster-monitoring-aws
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
 ```
 
-### Sensor Configuration
-Edit `config/dev.yaml` to customize sensor parameters:
-```yaml
-sensors:
-  temperature:
-    min: 18
-    max: 35
-    unit: "celsius"
-  humidity:
-    min: 30
-    max: 80
-    unit: "percentage"
+### Subscribe to Alerts
+```bash
+# Replace with your email
+aws sns subscribe \
+    --topic-arn <SNS_TOPIC_ARN_FROM_DEPLOY_OUTPUT> \
+    --protocol email \
+    --notification-endpoint your-email@example.com
 ```
 
 ## Testing
 
-### Unit Tests
+### Automatic Testing
+The system automatically generates mock sensor data every **2 minutes** via EventBridge.
+
+### Manual Testing
 ```bash
-cd tests/unit
-python -m pytest test_data_generator.py -v
-python -m pytest test_data_processor.py -v
+# Trigger data generation manually
+aws lambda invoke --function-name DisasterDataGenerator response.json
+
+# Send custom alert
+aws lambda invoke --function-name DisasterAlertSender \
+    --payload '{"alert_type":"TEST","message":"Manual test alert","severity":"HIGH"}' \
+    response.json
 ```
 
-### Integration Tests
-```bash
-cd tests/integration
-python -m pytest test_end_to_end.py -v
+## Alert Thresholds
+
+| Sensor Type | Warning Level | Critical Level |
+|-------------|---------------|----------------|
+| Water Level | > 6 meters    | > 12 meters    |
+| Vibration   | > 3 magnitude | > 7 magnitude  |
+| Rainfall    | > 50 mm       | > 75 mm        |
+| Wind Speed  | > 70 km/h     | > 60 km/h (with rain) |
+
+## AWS Services Used
+- **AWS Lambda** - Mock data generation & disaster prediction
+- **Amazon EventBridge** - Scheduled triggers  
+- **Amazon SNS** - Alert notifications
+- **CloudFormation** - Infrastructure as Code
+
+## Project Structure
+
+```
+disaster-monitoring-aws/
+├── iac/
+│   └── template.yaml        # CloudFormation infrastructure template
+├── lambda/
+│   ├── data_generator.py    # IoT sensor data simulation
+│   ├── predictor.py         # ML-based disaster prediction
+│   └── alert_sender.py      # SNS notification handler
+├── scripts/
+│   └── deploy.sh           # Automated deployment script
+├── README.md               # Project documentation
+└── LICENSE                 # MIT License
 ```
 
-### Load Testing
-```bash
-python scripts/generate-test-data.py --sensors 100 --duration 3600
+## Configuration
+
+### Alert Thresholds
+| Sensor Type | Warning Level | Critical Level |
+|-------------|---------------|----------------|
+| Water Level | > 6 meters    | > 12 meters    |
+| Vibration   | > 3 magnitude | > 7 magnitude  |
+| Rainfall    | > 50 mm       | > 75 mm        |
+| Wind Speed  | > 70 km/h     | > 60 km/h (with rain) |
+
+### System Settings
+```yaml
+# EventBridge Schedule
+data_generation_frequency: 2 minutes
+
+# Sensor Configuration  
+sensors:
+  water_level_range: 0-15 meters
+  vibration_range: 0-10 magnitude
+  weather_monitoring: rainfall, wind, temperature
 ```
+
+## Testing
+
+### Automated Testing
+The system runs continuous testing with scheduled data generation every 2 minutes.
+
+### Manual Testing
+```bash
+# Test data generation
+aws lambda invoke --function-name DisasterDataGenerator response.json
+
+# Test custom alert
+aws lambda invoke --function-name DisasterAlertSender \
+  --payload '{"alert_type":"TEST","message":"System test","severity":"HIGH"}' \
+  response.json
+
+# Test emergency scenario
+aws lambda invoke --function-name DisasterDataGenerator \
+  --payload '{"scenario":"flood_emergency"}' response.json
+```
+
+### Test Scenarios
+- **Normal Operations**: Sensors within safe thresholds
+- **Flood Emergency**: Critical water levels triggering evacuations  
+- **Earthquake Alert**: High magnitude seismic activity
+- **Severe Weather**: Storm conditions with multiple risks
 
 ## Monitoring
 
-### CloudWatch Metrics
-- `SensorReadings/Count`: Number of readings per minute
-- `Anomalies/Detected`: Anomalies detected per hour
-- `API/ResponseTime`: API endpoint response times
-- `Errors/Count`: Error count by function
+### CloudWatch Integration
+- **Lambda Metrics**: Execution time, error rates, invocation count
+- **SNS Metrics**: Message delivery success/failure rates
+- **System Health**: Overall system performance monitoring
+- **Cost Tracking**: AWS service usage and billing alerts
 
-### Dashboards
-- Real-time sensor readings
-- Anomaly detection results
-- System performance metrics
-- Cost optimization insights
-
-## Alerts Configuration
-
-### SNS Topics
-- **Critical Alerts**: Temperature > 35°C, Air Quality dangerous
-- **Warning Alerts**: Humidity > 75%, unusual patterns
-- **Info Alerts**: Daily summaries, system status
-
-### Alert Rules
-```json
-{
-  "temperature_critical": {
-    "threshold": 35,
-    "severity": "critical",
-    "notification": "immediate"
-  },
-  "humidity_warning": {
-    "threshold": 75,
-    "severity": "warning",
-    "notification": "batched"
-  }
-}
+### Available Metrics
+```
+DisasterMonitoring/DataGeneration/Count
+DisasterMonitoring/AlertsSent/Count  
+DisasterMonitoring/Errors/Count
+DisasterMonitoring/PredictionAccuracy
 ```
 
 ## Cost Optimization
 
-### Estimated Monthly Costs (1000 readings/day)
-- **Lambda**: $2-5
-- **DynamoDB**: $3-8
-- **API Gateway**: $1-3
-- **S3**: $0.50-2
-- **CloudWatch**: $1-3
-- **Total**: ~$7-21/month
+### Estimated Monthly Costs (1440 executions/day)
+- **Lambda Executions**: $1-3
+- **EventBridge Rules**: $0.50-1  
+- **SNS Messages**: $0.50-2
+- **CloudWatch Logs**: $1-2
+- **Total**: ~$3-8/month
 
 ### Cost Reduction Tips
-1. Use DynamoDB on-demand pricing for variable workloads
-2. Enable S3 Intelligent Tiering for historical data
-3. Set CloudWatch log retention to 30 days
-4. Use Reserved Capacity for predictable workloads
+1. Adjust EventBridge frequency based on monitoring needs
+2. Set CloudWatch log retention to 7-14 days  
+3. Use SNS message filtering to reduce unnecessary alerts
+4. Monitor and optimize Lambda memory allocation
 
 ## Security
 
 ### IAM Policies
-- Least privilege access for Lambda functions
-- Separate roles for different components
-- Cross-service permissions properly scoped
+- Least privilege access for all Lambda functions
+- Separate execution roles for different components
+- SNS topic access restricted to authorized services
 
 ### Data Protection
-- Encryption at rest for DynamoDB and S3
-- API Gateway with API key authentication
-- VPC endpoints for private communication
+- No sensitive data stored (simulation only)
+- CloudWatch logs with configurable retention
+- SNS message encryption in transit
 
 ## Deployment
 
 ### Development Environment
 ```bash
-./scripts/deploy.sh dev
-```
-
-### Production Environment
-```bash
-./scripts/deploy.sh prod
+./scripts/deploy.sh
 ```
 
 ### Cleanup
 ```bash
-./scripts/cleanup.sh
-aws cloudformation delete-stack --stack-name iot-monitoring-system
+# Delete CloudFormation stack
+aws cloudformation delete-stack --stack-name DisasterMonitoringSystem
+
+# Remove S3 bucket (replace with actual bucket name)
+aws s3 rb s3://disaster-monitoring-lambda-code-XXXXX --force
 ```
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/new-sensor-type`)
+3. Commit your changes (`git commit -m 'Add earthquake swarm detection'`)
+4. Push to the branch (`git push origin feature/new-sensor-type`)
 5. Open a Pull Request
 
 ## License
@@ -274,18 +214,20 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For questions or support:
 - Create an issue in this repository
-- Contact: [shoaibalimir1334@gmail.com](mailto:shoaibalimir1334@gmail.com)
+- Contact: [:shoaibalimir1334@gmail.com](mailto:shoaibalimir1334@gmail.com)
 - LinkedIn: [LinkedIn Profile](https://linkedin.com/in/shoaibalimir)
 
 ## Learning Objectives
 
 This project demonstrates:
-- **IoT Data Simulation**: Creating realistic sensor data patterns
-- **Serverless Architecture**: Building scalable solutions with AWS Lambda
-- **Real-time Processing**: Stream processing with AWS services
-- **AI/ML Integration**: Implementing anomaly detection algorithms
-- **API Design**: Creating RESTful APIs with proper documentation
-- **Infrastructure as Code**: Using CloudFormation for reproducible deployments
-- **Monitoring & Alerting**: Implementing comprehensive observability
+- **IoT Simulation**: Creating realistic sensor data patterns for disaster scenarios
+- **Serverless Architecture**: Building scalable monitoring systems with AWS Lambda  
+- **Event-Driven Design**: Using EventBridge for automated data generation
+- **Rule-Based ML**: Implementing disaster prediction without expensive ML services
+- **Alert Systems**: Designing effective notification and escalation workflows
+- **Infrastructure as Code**: CloudFormation for reproducible deployments
+- **AWS Integration**: Combining multiple AWS services for complete solutions
 
 ---
+
+**Note**: This is a simulation system for educational/presentation purposes. For production disaster monitoring, integrate with real IoT sensors and professional ML models.
