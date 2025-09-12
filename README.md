@@ -214,7 +214,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For questions or support:
 - Create an issue in this repository
-- Contact: [:shoaibalimir1334@gmail.com](mailto:shoaibalimir1334@gmail.com)
+- Contact: [shoaibalimir1334@gmail.com](mailto:shoaibalimir1334@gmail.com)
 - LinkedIn: [LinkedIn Profile](https://linkedin.com/in/shoaibalimir)
 
 ## Learning Objectives
