@@ -1,4 +1,4 @@
-# 🌍 Disaster Monitoring & Early Warning System
+# Disaster Monitoring & Early Warning System
 
 [![AWS](https://img.shields.io/badge/AWS-Cloud-orange)](https://aws.amazon.com/)
 [![Python](https://img.shields.io/badge/Python-3.9-blue)](https://python.org/)
@@ -29,8 +29,8 @@ EventBridge (Schedule) → DataGenerator Lambda → DisasterPredictor Lambda →
 
 ### Deploy
 ```bash
-git clone <your-repo>
-cd disaster-monitoring-aws
+git clone https://github.com/shoaibalimir/iot-meets-cloud-and-ai.git
+cd iot-meets-cloud-and-ai
 chmod +x scripts/deploy.sh
 ./scripts/deploy.sh
 ```
@@ -214,7 +214,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For questions or support:
 - Create an issue in this repository
-- Contact: [:shoaibalimir1334@gmail.com](mailto:shoaibalimir1334@gmail.com)
+- Contact: [shoaibalimir1334@gmail.com](mailto:shoaibalimir1334@gmail.com)
 - LinkedIn: [LinkedIn Profile](https://linkedin.com/in/shoaibalimir)
 
 ## Learning Objectives
