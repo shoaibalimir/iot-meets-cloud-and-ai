@@ -17,7 +17,11 @@ This is a simplified demonstration version of an AWS serverless EV charging mana
 - **CloudWatch Events**: Automated simulation triggers
 - **Web Dashboard**: Real-time monitoring interface
 
-## Solution Architecture
+## Architecture Overview
+
+<img width="1725" height="943" alt="image" src="https://github.com/user-attachments/assets/5a00e8b1-8cd9-4fa8-a499-eea7ac1bb48b" />
+
+## Solution Architecture (Simplified)
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
