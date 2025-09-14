@@ -26,7 +26,7 @@ This is a refactored version of the AWS guidance for modernizing electric vehicl
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   CloudWatch    │    │   EventBridge   │    │    DynamoDB     │
-│   (Schedule)    │───▶│  (Custom Bus)   │───▶│  (Charge Data)  │
+│   (Schedule)    │--->│  (Custom Bus)   │--->│  (Charge Data)  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
         │                        │                        ▲
         ▼                        ▼                        │
