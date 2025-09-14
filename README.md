@@ -15,6 +15,8 @@ This is a refactored version of the AWS guidance for modernizing electric vehicl
 - **Physical charge points** with OCPP protocol
 - **CDK** for deployment
 
+<img width="1279" height="721" alt="image" src="https://github.com/user-attachments/assets/5deaba61-f600-461b-b26e-6824d431fe41" />
+
 ### Demo Architecture
 - **Lambda functions** for all processing
 - **EventBridge** for event-driven communication
