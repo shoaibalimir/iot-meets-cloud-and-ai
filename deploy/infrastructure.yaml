@@ -1,0 +1,688 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EV Charging Demo - Simplified One-Click Deployment'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: demo
+    Description: Environment name
+
+Resources:
+  # DynamoDB Tables
+  ChargePointsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-charge-points"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: chargePointId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: chargePointId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: StatusIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ChargingSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-charging-sessions"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+        - AttributeName: chargePointId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ChargePointIndex
+          KeySchema:
+            - AttributeName: chargePointId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # EventBridge Custom Bus
+  EVEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "${Environment}-ev-bus"
+
+  # IAM Role for Lambda Functions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: EVChargingAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: 
+                  - !GetAtt ChargePointsTable.Arn
+                  - !GetAtt ChargingSessionsTable.Arn
+                  - !Sub "${ChargePointsTable.Arn}/index/*"
+                  - !Sub "${ChargingSessionsTable.Arn}/index/*"
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt EVEventBus.Arn
+
+  # Charge Point Simulator Lambda
+  SimulatorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${Environment}-simulator"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          EVENT_BUS_NAME: !Ref EVEventBus
+          CHARGE_POINTS_TABLE: !Ref ChargePointsTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import random
+          import uuid
+          from datetime import datetime
+          import os
+
+          eventbridge = boto3.client('events')
+          dynamodb = boto3.resource('dynamodb')
+
+          def lambda_handler(event, context):
+              bus_name = os.environ['EVENT_BUS_NAME']
+              table_name = os.environ['CHARGE_POINTS_TABLE']
+              table = dynamodb.Table(table_name)
+              
+              # Create demo charge points if they don't exist
+              create_demo_charge_points(table)
+              
+              # Get charge point ID from event or pick random
+              charge_point_id = event.get('chargePointId', f"CP-DEMO-{random.randint(1, 3):03d}")
+              message_type = event.get('messageType', random.choice(['BootNotification', 'Heartbeat', 'StatusNotification', 'MeterValues']))
+              
+              # Generate OCPP message
+              ocpp_message = generate_ocpp_message(charge_point_id, message_type)
+              
+              # Update charge point in DynamoDB
+              update_charge_point(table, charge_point_id, message_type)
+              
+              # Send event to EventBridge
+              response = eventbridge.put_events(
+                  Entries=[{
+                      'Source': 'ev.charging.simulator',
+                      'DetailType': f'OCPP {message_type}',
+                      'Detail': json.dumps(ocpp_message),
+                      'EventBusName': bus_name
+                  }]
+              )
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': f'Simulated {message_type} for {charge_point_id}',
+                      'eventId': response['Entries'][0]['EventId'] if response['Entries'] else 'none'
+                  })
+              }
+
+          def create_demo_charge_points(table):
+              demo_points = [
+                  {
+                      'chargePointId': 'CP-DEMO-001',
+                      'status': 'Available',
+                      'location': 'Demo Location 1',
+                      'model': 'FastCharge Pro',
+                      'vendor': 'EV Solutions Inc',
+                      'connectors': 2,
+                      'maxPower': 50,
+                      'lastSeen': datetime.utcnow().isoformat(),
+                      'createdAt': datetime.utcnow().isoformat()
+                  },
+                  {
+                      'chargePointId': 'CP-DEMO-002', 
+                      'status': 'Charging',
+                      'location': 'Demo Location 2',
+                      'model': 'SuperCharge X1',
+                      'vendor': 'EV Solutions Inc',
+                      'connectors': 1,
+                      'maxPower': 150,
+                      'lastSeen': datetime.utcnow().isoformat(),
+                      'createdAt': datetime.utcnow().isoformat()
+                  },
+                  {
+                      'chargePointId': 'CP-DEMO-003',
+                      'status': 'Available', 
+                      'location': 'Demo Location 3',
+                      'model': 'EcoCharge Lite',
+                      'vendor': 'Green Energy Corp',
+                      'connectors': 1,
+                      'maxPower': 22,
+                      'lastSeen': datetime.utcnow().isoformat(),
+                      'createdAt': datetime.utcnow().isoformat()
+                  }
+              ]
+              
+              for cp in demo_points:
+                  try:
+                      table.put_item(
+                          Item=cp,
+                          ConditionExpression='attribute_not_exists(chargePointId)'
+                      )
+                  except:
+                      pass  # Already exists
+
+          def generate_ocpp_message(charge_point_id, message_type):
+              base = {
+                  'chargePointId': charge_point_id,
+                  'timestamp': datetime.utcnow().isoformat(),
+                  'messageType': message_type
+              }
+              
+              if message_type == 'BootNotification':
+                  base.update({
+                      'chargingStation': {
+                          'model': 'Demo-EV-Charger',
+                          'vendorName': 'Demo Charging Solutions',
+                          'firmwareVersion': '2.1.0'
+                      }
+                  })
+              elif message_type == 'StatusNotification':
+                  base.update({
+                      'connectorId': 1,
+                      'status': random.choice(['Available', 'Occupied', 'Charging', 'Faulted']),
+                      'errorCode': 'NoError'
+                  })
+              elif message_type == 'MeterValues':
+                  base.update({
+                      'connectorId': 1,
+                      'meterValue': {
+                          'timestamp': datetime.utcnow().isoformat(),
+                          'sampledValue': [{
+                              'value': str(round(random.uniform(5, 50), 2)),
+                              'measurand': 'Energy.Active.Import.Register',
+                              'unit': 'kWh'
+                          }]
+                      }
+                  })
+              
+              return base
+
+          def update_charge_point(table, charge_point_id, message_type):
+              timestamp = datetime.utcnow().isoformat()
+              try:
+                  table.update_item(
+                      Key={'chargePointId': charge_point_id},
+                      UpdateExpression='SET lastMessage = :msg, lastSeen = :ts',
+                      ExpressionAttributeValues={
+                          ':msg': message_type,
+                          ':ts': timestamp
+                      }
+                  )
+              except:
+                  pass
+
+  # OCPP Message Handler Lambda  
+  HandlerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${Environment}-handler"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          CHARGE_POINTS_TABLE: !Ref ChargePointsTable
+          SESSIONS_TABLE: !Ref ChargingSessionsTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import uuid
+          from datetime import datetime
+          import os
+
+          dynamodb = boto3.resource('dynamodb')
+
+          def lambda_handler(event, context):
+              detail = event.get('detail', {})
+              message_type = detail.get('messageType', '')
+              charge_point_id = detail.get('chargePointId', '')
+              
+              print(f"Processing {message_type} for {charge_point_id}")
+              
+              if message_type == 'BootNotification':
+                  return handle_boot_notification(detail)
+              elif message_type == 'StatusNotification':
+                  return handle_status_notification(detail) 
+              elif message_type == 'MeterValues':
+                  return handle_meter_values(detail)
+              
+              return {'statusCode': 200, 'message': 'Processed'}
+
+          def handle_boot_notification(detail):
+              cp_table = dynamodb.Table(os.environ['CHARGE_POINTS_TABLE'])
+              charge_point_id = detail['chargePointId']
+              
+              cp_table.update_item(
+                  Key={'chargePointId': charge_point_id},
+                  UpdateExpression='SET #status = :status, lastBootTime = :boot, registeredAt = :reg',
+                  ExpressionAttributeNames={'#status': 'status'},
+                  ExpressionAttributeValues={
+                      ':status': 'Available',
+                      ':boot': detail['timestamp'],
+                      ':reg': datetime.utcnow().isoformat()
+                  }
+              )
+              
+              return {'statusCode': 200, 'message': 'Boot notification processed'}
+
+          def handle_status_notification(detail):
+              cp_table = dynamodb.Table(os.environ['CHARGE_POINTS_TABLE'])
+              charge_point_id = detail['chargePointId']
+              new_status = detail.get('status', 'Available')
+              
+              cp_table.update_item(
+                  Key={'chargePointId': charge_point_id},
+                  UpdateExpression='SET #status = :status, lastStatusUpdate = :ts',
+                  ExpressionAttributeNames={'#status': 'status'},
+                  ExpressionAttributeValues={
+                      ':status': new_status,
+                      ':ts': detail['timestamp']
+                  }
+              )
+              
+              # Auto-create charging session if status is "Charging"
+              if new_status == 'Charging':
+                  create_charging_session(charge_point_id)
+              
+              return {'statusCode': 200, 'message': 'Status updated'}
+
+          def handle_meter_values(detail):
+              # Store meter readings for active sessions
+              sessions_table = dynamodb.Table(os.environ['SESSIONS_TABLE'])
+              charge_point_id = detail['chargePointId']
+              
+              try:
+                  # Find active session for this charge point
+                  response = sessions_table.query(
+                      IndexName='ChargePointIndex',
+                      KeyConditionExpression='chargePointId = :cp_id',
+                      FilterExpression='#status = :status',
+                      ExpressionAttributeNames={'#status': 'status'},
+                      ExpressionAttributeValues={
+                          ':cp_id': charge_point_id,
+                          ':status': 'Active'
+                      }
+                  )
+                  
+                  if response['Items']:
+                      session = response['Items'][0]
+                      energy_value = float(detail['meterValue']['sampledValue'][0]['value'])
+                      
+                      sessions_table.update_item(
+                          Key={'sessionId': session['sessionId']},
+                          UpdateExpression='SET currentEnergy = :energy, lastUpdate = :ts',
+                          ExpressionAttributeValues={
+                              ':energy': energy_value,
+                              ':ts': datetime.utcnow().isoformat()
+                          }
+                      )
+              except:
+                  pass
+              
+              return {'statusCode': 200, 'message': 'Meter values processed'}
+
+          def create_charging_session(charge_point_id):
+              sessions_table = dynamodb.Table(os.environ['SESSIONS_TABLE'])
+              session_id = str(uuid.uuid4())
+              
+              try:
+                  sessions_table.put_item(
+                      Item={
+                          'sessionId': session_id,
+                          'chargePointId': charge_point_id,
+                          'status': 'Active',
+                          'startTime': datetime.utcnow().isoformat(),
+                          'startEnergy': 0.0,
+                          'currentEnergy': 0.0,
+                          'cost': 0.0,
+                          'userId': 'demo-user'
+                      }
+                  )
+              except:
+                  pass
+
+  # API Lambda for Dashboard
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${Environment}-api"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          CHARGE_POINTS_TABLE: !Ref ChargePointsTable
+          SESSIONS_TABLE: !Ref ChargingSessionsTable
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from decimal import Decimal
+
+          dynamodb = boto3.resource('dynamodb')
+
+          def lambda_handler(event, context):
+              headers = {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+              }
+              
+              if event['httpMethod'] == 'OPTIONS':
+                  return {'statusCode': 200, 'headers': headers, 'body': ''}
+              
+              path = event.get('path', '')
+              
+              try:
+                  if 'chargepoints' in path:
+                      return get_charge_points(headers)
+                  elif 'sessions' in path:
+                      return get_sessions(headers)
+                  elif 'stats' in path:
+                      return get_stats(headers)
+                  else:
+                      return {
+                          'statusCode': 404,
+                          'headers': headers,
+                          'body': json.dumps({'error': 'Not found'})
+                      }
+              except Exception as e:
+                  return {
+                      'statusCode': 500,
+                      'headers': headers,
+                      'body': json.dumps({'error': str(e)})
+                  }
+
+          def get_charge_points(headers):
+              table = dynamodb.Table(os.environ['CHARGE_POINTS_TABLE'])
+              response = table.scan()
+              
+              return {
+                  'statusCode': 200,
+                  'headers': headers,
+                  'body': json.dumps(response.get('Items', []), default=decimal_default)
+              }
+
+          def get_sessions(headers):
+              table = dynamodb.Table(os.environ['SESSIONS_TABLE'])
+              response = table.scan()
+              
+              return {
+                  'statusCode': 200,
+                  'headers': headers,
+                  'body': json.dumps(response.get('Items', []), default=decimal_default)
+              }
+
+          def get_stats(headers):
+              cp_table = dynamodb.Table(os.environ['CHARGE_POINTS_TABLE'])
+              sessions_table = dynamodb.Table(os.environ['SESSIONS_TABLE'])
+              
+              cp_response = cp_table.scan()
+              sessions_response = sessions_table.scan()
+              
+              charge_points = cp_response.get('Items', [])
+              sessions = sessions_response.get('Items', [])
+              
+              stats = {
+                  'totalChargePoints': len(charge_points),
+                  'availableChargePoints': len([cp for cp in charge_points if cp.get('status') == 'Available']),
+                  'chargingChargePoints': len([cp for cp in charge_points if cp.get('status') == 'Charging']),
+                  'activeSessions': len([s for s in sessions if s.get('status') == 'Active']),
+                  'totalSessions': len(sessions),
+                  'totalEnergy': sum([float(s.get('currentEnergy', 0)) for s in sessions])
+              }
+              
+              return {
+                  'statusCode': 200,
+                  'headers': headers,
+                  'body': json.dumps(stats, default=decimal_default)
+              }
+
+          def decimal_default(obj):
+              if isinstance(obj, Decimal):
+                  return float(obj)
+              raise TypeError
+
+  # EventBridge Rule for OCPP Messages
+  OCPPMessageRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref EVEventBus
+      EventPattern:
+        source: ["ev.charging.simulator"]
+        detail-type: [
+          "OCPP BootNotification",
+          "OCPP Heartbeat",
+          "OCPP StatusNotification", 
+          "OCPP MeterValues"
+        ]
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt HandlerFunction.Arn
+          Id: "OCPPHandlerTarget"
+
+  # Permission for EventBridge to invoke Handler Lambda
+  HandlerEventPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HandlerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt OCPPMessageRule.Arn
+
+  # CloudWatch Event to trigger simulator every 2 minutes
+  SimulatorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Triggers charge point simulator every 2 minutes"
+      ScheduleExpression: "rate(2 minutes)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SimulatorFunction.Arn
+          Id: "SimulatorTarget"
+
+  SimulatorSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SimulatorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SimulatorSchedule.Arn
+
+  # API Gateway
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${Environment}-ev-api"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Resources
+  ChargePointsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: chargepoints
+
+  SessionsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: sessions
+
+  StatsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: stats
+
+  # API Methods
+  ChargePointsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ChargePointsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+
+  SessionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref SessionsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+
+  StatsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref StatsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+
+  # CORS Methods
+  ChargePointsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ChargePointsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+
+  SessionsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref SessionsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+
+  StatsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref StatsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations"
+
+  # Lambda Permissions for API Gateway - FIXED VERSION
+  ApiLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*/*"
+
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - ChargePointsMethod
+      - SessionsMethod
+      - StatsMethod
+      - ChargePointsOptionsMethod
+      - SessionsOptionsMethod
+      - StatsOptionsMethod
+    Properties:
+      RestApiId: !Ref RestApi
+      StageName: prod
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: !Sub "${Environment}-api-endpoint"
+
+  ChargePointsTableName:
+    Description: "DynamoDB Charge Points table name"
+    Value: !Ref ChargePointsTable
+
+  SessionsTableName:
+    Description: "DynamoDB Sessions table name" 
+    Value: !Ref ChargingSessionsTable
+
+  EventBusName:
+    Description: "EventBridge custom bus name"
+    Value: !Ref EVEventBus
+
+  SimulatorFunctionName:
+    Description: "Simulator Lambda function name"
+    Value: !Ref SimulatorFunction
+
+  DashboardInstructions:
+    Description: "How to access the dashboard"
+    Value: "Open the index.html file and replace 'API_ENDPOINT_HERE' with the API endpoint above"

@@ -1,4 +1,22 @@
-*.pyc
+# AWS
 *.zip
-__pycache__/
-.env
+.aws-sam/
+samconfig.toml
+response.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
